@@ -546,7 +546,7 @@ static bool airoha_ppe_foe_compare_entry(struct airoha_flow_table_entry *e,
 
 static int airoha_ppe_foe_commit_entry(struct airoha_ppe *ppe,
 				       struct airoha_foe_entry *e,
-				       u32 hash)
+				       u32 hash, enum airoha_foe_state state)
 {
 	struct airoha_foe_entry *hwe = ppe->foe + hash * sizeof(*hwe);
 	u32 ts = airoha_ppe_get_timestamp(ppe);
@@ -560,6 +560,8 @@ static int airoha_ppe_foe_commit_entry(struct airoha_ppe *ppe,
 	e->ib1 &= ~AIROHA_FOE_IB1_BIND_TIMESTAMP;
 	e->ib1 |= FIELD_PREP(AIROHA_FOE_IB1_BIND_TIMESTAMP, ts);
 	hwe->ib1 = e->ib1;
+	hwe->ib1 &= ~AIROHA_FOE_IB1_BIND_STATE;
+	hwe->ib1 |= FIELD_PREP(AIROHA_FOE_IB1_BIND_STATE, state);
 
 	rcu_read_lock();
 
@@ -592,10 +594,8 @@ static void airoha_ppe_foe_remove_flow(struct airoha_ppe *ppe,
 
 	hlist_del_init(&e->list);
 	if (e->hash != 0xffff) {
-		e->data.ib1 &= ~AIROHA_FOE_IB1_BIND_STATE;
-		e->data.ib1 |= FIELD_PREP(AIROHA_FOE_IB1_BIND_STATE,
-					  AIROHA_FOE_STATE_INVALID);
-		airoha_ppe_foe_commit_entry(ppe, &e->data, e->hash);
+		airoha_ppe_foe_commit_entry(ppe, &e->data, e->hash,
+					    AIROHA_FOE_STATE_INVALID);
 		e->hash = 0xffff;
 	}
 	if (e->type == FLOW_TYPE_L2_SUBFLOW) {
@@ -675,7 +675,7 @@ airoha_ppe_foe_commit_subflow_entry(struct airoha_ppe *ppe,
 	}
 
 	hwe.bridge.data = e->data.bridge.data;
-	airoha_ppe_foe_commit_entry(ppe, &hwe, hash);
+	airoha_ppe_foe_commit_entry(ppe, &hwe, hash, AIROHA_FOE_STATE_BIND);
 
 	return 0;
 }
@@ -717,7 +717,8 @@ static void airoha_ppe_foe_insert_entry(struct airoha_ppe *ppe,
 			continue;
 		}
 
-		airoha_ppe_foe_commit_entry(ppe, &e->data, hash);
+		airoha_ppe_foe_commit_entry(ppe, &e->data, hash,
+					    AIROHA_FOE_STATE_BIND);
 		commit_done = true;
 		e->hash = hash;
 	}
